@@ -1,8 +1,8 @@
 {
   "id": "moment-of-glory",
   "title": "A Moment of Glory",
-  "description": "When a hostile creature is reduced to 0 HP, offer the GM a chance to grant the killer a Moment of Glory — a short roleplaying beat to describe the finishing blow.",
-  "version": "0.1.0",
+  "description": "When a hostile creature is reduced to 0 HP, offer the GM a chance to grant the killer a Moment of Glory - a short roleplaying beat to describe the finishing blow.",
+  "version": "0.1.1",
   "compatibility": {
     "minimum": "13",
     "verified": "13.351"
@@ -45,5 +45,5 @@
   ],
   "url": "https://github.com/Tinhead69/Moment-of-glory",
   "manifest": "https://raw.githubusercontent.com/Tinhead69/Moment-of-glory/main/module.json",
-  "download": "https://github.com/Tinhead69/Moment-of-glory/archive/refs/heads/main.zip"
+  "download": "https://codeload.github.com/Tinhead69/Moment-of-glory/zip/refs/heads/main"
 }
