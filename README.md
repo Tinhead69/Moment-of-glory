@@ -21,6 +21,7 @@ When a character reduces a hostile creature to **0 HP**, the GM is asked whether
 3. **Decline** → nothing extra; death proceeds as normal
 4. **Offer** → the killing player gets a spotlight prompt naming the **weapon/item** used
 5. They describe the kill **at the table** (no typing); chat notes that they seized the moment
+6. The defeated creature’s token is marked with a **skull** (dead status / overlay)
 
 ## Settings
 

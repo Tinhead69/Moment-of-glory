@@ -265,6 +265,45 @@ function findPlayerUser(attacker) {
 }
 
 /**
+ * Apply a skull / dead marker on the creature's token(s).
+ * Prefers the system "dead" status effect; falls back to token overlay.
+ * @param {Actor} target
+ */
+async function markCreatureDead(target) {
+  if (!target || !game.user?.isGM) return;
+
+  try {
+    const alreadyDead = target.effects?.some((effect) => {
+      const statuses = effect.statuses;
+      if (statuses instanceof Set) return statuses.has("dead");
+      if (Array.isArray(statuses)) return statuses.includes("dead");
+      return effect.flags?.core?.statusId === "dead"
+        || effect.flags?.dnd5e?.statusId === "dead";
+    });
+
+    if (!alreadyDead && typeof target.toggleStatusEffect === "function") {
+      await target.toggleStatusEffect("dead", { active: true });
+      return;
+    }
+
+    if (alreadyDead) return;
+  } catch (err) {
+    console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed, trying overlay`, err);
+  }
+
+  // Fallback: classic Foundry skull overlay on each placed token
+  const tokens = target.getActiveTokens?.(true) ?? [];
+  for (const token of tokens) {
+    try {
+      if (token.document.overlayEffect === "icons/svg/skull.svg") continue;
+      await token.document.update({ overlayEffect: "icons/svg/skull.svg" });
+    } catch (err) {
+      console.warn(`${MODULE_ID} | Failed to set skull overlay on token`, err);
+    }
+  }
+}
+
+/**
  * Run the full GM → player Moment of Glory flow (GM client orchestrates).
  * @param {{ attacker: Actor, target: Actor, weaponName?: string }} ctx
  */
@@ -274,6 +313,9 @@ export async function runMomentOfGloryFlow({ attacker, target, weaponName = "you
   if (!attacker || !target) return;
   if (!shouldConsiderTarget(target)) return;
   if (isDuplicate(target.uuid || target.id)) return;
+
+  // Creature is at 0 HP — show skull & crossbones on the token.
+  await markCreatureDead(target);
 
   const offered = await promptGM({ attacker, target, weaponName });
   if (!offered) {
