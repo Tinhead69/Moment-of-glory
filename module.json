@@ -43,7 +43,7 @@
       "path": "lang/en.json"
     }
   ],
-  "url": "",
-  "manifest": "",
-  "download": ""
+  "url": "https://github.com/Tinhead69/Moment-of-glory",
+  "manifest": "https://raw.githubusercontent.com/Tinhead69/Moment-of-glory/main/module.json",
+  "download": "https://github.com/Tinhead69/Moment-of-glory/archive/refs/heads/main.zip"
 }
