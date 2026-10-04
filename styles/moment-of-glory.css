@@ -1,0 +1,25 @@
+.moment-of-glory-dialog .mog-prompt {
+  line-height: 1.4;
+  margin-bottom: 0.75rem;
+}
+
+.moment-of-glory-dialog textarea.mog-description {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  margin-top: 0.5rem;
+  font-family: inherit;
+}
+
+.moment-of-glory-dialog .mog-hint {
+  opacity: 0.75;
+  font-size: 0.9em;
+  margin-top: 0.35rem;
+}
+
+.chat-message .moment-of-glory-card blockquote {
+  margin: 0.5rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid #c9a227;
+  font-style: italic;
+}

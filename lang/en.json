@@ -1,0 +1,43 @@
+{
+  "MOMENT_OF_GLORY": {
+    "Title": "A Moment of Glory",
+    "Settings": {
+      "Enabled": {
+        "Name": "Enable Moment of Glory",
+        "Hint": "When enabled, reducing a hostile creature to 0 HP may prompt a Moment of Glory."
+      },
+      "HostilesOnly": {
+        "Name": "Hostile targets only",
+        "Hint": "Only offer Moments of Glory when the defeated creature's disposition is hostile."
+      },
+      "IgnorePCs": {
+        "Name": "Ignore player characters",
+        "Hint": "Never offer a Moment of Glory when the creature reduced to 0 HP is a player character."
+      }
+    },
+    "GM": {
+      "PromptTitle": "Moment of Glory?",
+      "PromptContent": "<p><strong>{attacker}</strong> has reduced <strong>{target}</strong> to 0 HP.</p><p>Offer them a <em>Moment of Glory</em> to describe the finishing blow?</p>",
+      "Offer": "Offer Moment of Glory",
+      "Decline": "Decline — kill as normal"
+    },
+    "Player": {
+      "PromptTitle": "A Moment of Glory",
+      "PromptContent": "<p>The GM offers you a <strong>Moment of Glory</strong>.</p><p>Describe how you finish <strong>{target}</strong>:</p>",
+      "Placeholder": "Describe your finishing blow…",
+      "Submit": "Seize the Moment",
+      "Skip": "Skip"
+    },
+    "Chat": {
+      "Announcement": "<p><em>A Moment of Glory</em> — <strong>{attacker}</strong> vs <strong>{target}</strong></p><blockquote>{description}</blockquote>",
+      "Skipped": "{attacker} declines the Moment of Glory against {target}."
+    },
+    "Notify": {
+      "WaitingOnGM": "Waiting for the GM to decide on a Moment of Glory…",
+      "WaitingOnPlayer": "Waiting for {player} to describe their Moment of Glory…",
+      "Offered": "You have been offered a Moment of Glory!",
+      "Declined": "Moment of Glory declined — death proceeds normally.",
+      "NoMidi": "Moment of Glory: midi-qol not active; falling back to dnd5e damage hooks where possible."
+    }
+  }
+}
