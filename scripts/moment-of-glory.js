@@ -84,15 +84,14 @@ function resolveWeaponName(workflow, detail = {}) {
     || (detail?.itemUuid && fromUuidSync?.(detail.itemUuid))
     || null;
 
-  const name = item?.name
+  const name = detail?.weaponName
+    || item?.name
     || workflow?.itemName
     || detail?.itemName
-    || workflow?.ammoName
-    || detail?.weaponName;
+    || workflow?.ammoName;
 
   if (name) return String(name);
 
-  // Spell / feature without a classic weapon
   if (item?.type === "spell") return item.name || "a spell";
   if (item?.type === "feat") return item.name || "a feature";
 
@@ -137,7 +136,10 @@ function resolveAttacker(workflow, detail = {}) {
   return resolveActor(workflow?.actor)
     || resolveActor(detail?.actor)
     || resolveActor(detail?.attacker)
+    || resolveActor(detail?.item?.actor)
+    || resolveActor(workflow?.item?.actor)
     || resolveActor(canvas.tokens?.controlled?.[0]?.actor)
+    || resolveActor(game.user?.character)
     || null;
 }
 

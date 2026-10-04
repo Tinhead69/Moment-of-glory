@@ -37,7 +37,7 @@
       "WaitingOnPlayer": "Waiting for {player} to take their Moment of Glory…",
       "Offered": "You have been offered a Moment of Glory!",
       "Declined": "Moment of Glory declined — death proceeds normally.",
-      "NoMidi": "Moment of Glory: midi-qol not active; falling back to dnd5e damage hooks where possible."
+      "NoMidi": "Moment of Glory: running without Midi-QOL (built-in dnd5e damage detection)."
     }
   }
 }

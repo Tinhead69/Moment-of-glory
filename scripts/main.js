@@ -1,5 +1,6 @@
 import { MODULE_ID, registerSettings, isEnabled } from "./settings.js";
 import { considerWorkflow, handleSocket } from "./moment-of-glory.js";
+import { registerFallbackDamageHooks } from "./fallback-damage.js";
 
 Hooks.once("init", () => {
   registerSettings();
@@ -13,22 +14,20 @@ Hooks.once("ready", () => {
     });
   });
 
-  registerMidiHooks();
-  registerFallbackDamageHooks();
-
-  if (!game.modules.get("midi-qol")?.active) {
-    console.warn(`${MODULE_ID} | midi-qol not active — using dnd5e damage fallbacks`);
-    if (game.user?.isGM) {
-      ui.notifications?.warn(game.i18n.localize("MOMENT_OF_GLORY.Notify.NoMidi"));
-    }
+  const hasMidi = Boolean(game.modules.get("midi-qol")?.active);
+  if (hasMidi) {
+    registerMidiHooks();
+    console.log(`${MODULE_ID} | Using Midi-QOL damage detection`);
+  } else {
+    registerFallbackDamageHooks();
+    console.log(`${MODULE_ID} | Midi-QOL not active — using built-in dnd5e damage detection`);
   }
 
   console.log(`${MODULE_ID} | Ready`);
 });
 
 /**
- * Preferred path: Midi-QOL damage workflows.
- * Hook names vary slightly by Midi version — register several safely.
+ * Preferred path when Midi-QOL is installed.
  */
 function registerMidiHooks() {
   const midiHooks = [
@@ -40,41 +39,10 @@ function registerMidiHooks() {
   for (const hookName of midiHooks) {
     Hooks.on(hookName, (workflow) => {
       if (!isEnabled()) return;
-      // Only the GM orchestrates prompts.
       if (!game.user?.isGM) return;
       considerWorkflow(workflow).catch((err) => {
         console.error(`${MODULE_ID} | considerWorkflow failed (${hookName})`, err);
       });
     });
   }
-}
-
-/**
- * Fallback when Midi is missing: watch dnd5e damage application.
- * Less precise than Midi damageList, but covers basic attacks.
- */
-function registerFallbackDamageHooks() {
-  // dnd5e v3+/v4+ style
-  Hooks.on("dnd5e.applyDamage", (actor, amount, options) => {
-    if (!isEnabled() || !game.user?.isGM) return;
-    if (game.modules.get("midi-qol")?.active) return; // Midi path preferred
-
-    const target = actor?.documentName === "Actor" ? actor : actor?.actor;
-    if (!target) return;
-
-    const hp = Number(target.system?.attributes?.hp?.value ?? 1);
-    if (hp > 0) return;
-
-    const attacker = options?.midi?.sourceActor
-      || options?.sourceActor
-      || canvas.tokens?.controlled?.[0]?.actor
-      || null;
-
-    considerWorkflow(
-      { actor: attacker, targets: [target], damageList: [] },
-      { target, newHP: hp, totalDamage: amount }
-    ).catch((err) => {
-      console.error(`${MODULE_ID} | fallback applyDamage failed`, err);
-    });
-  });
 }

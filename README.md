@@ -6,7 +6,8 @@ When a character reduces a hostile creature to **0 HP**, the GM is asked whether
 
 - Foundry VTT **v13**
 - [D&D 5e](https://github.com/foundryvtt/dnd5e) **3.0+**
-- Recommended: [Midi-QOL](https://gitlab.com/tposney/midi-qol) (primary damage detection)
+- Optional but recommended: [Midi-QOL](https://gitlab.com/tposney/midi-qol) for the richest damage/weapon data
+- Works **without Midi-QOL** via built-in dnd5e damage hooks
 
 ## Install
 
@@ -35,7 +36,7 @@ When a character reduces a hostile creature to **0 HP**, the GM is asked whether
 
 - GM client orchestrates prompts; player dialogs use `game.socket`
 - Duplicate prompts for the same target are suppressed for a few seconds
-- Without Midi-QOL, a lighter `dnd5e.applyDamage` fallback is used
+- Without Midi-QOL, built-in `dnd5e.preApplyDamage` / `dnd5e.applyDamage` detection is used (plus chat context for weapon/attacker)
 
 ## License
 
