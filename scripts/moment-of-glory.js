@@ -264,41 +264,93 @@ function findPlayerUser(attacker) {
   return null;
 }
 
+const SKULL_ICON = "icons/svg/skull.svg";
+
 /**
- * Apply a skull / dead marker on the creature's token(s).
- * Prefers the system "dead" status effect; falls back to token overlay.
+ * @param {Actor} target
+ * @returns {boolean}
+ */
+function actorHasDeadStatus(target) {
+  return Boolean(target.effects?.some((effect) => {
+    const statuses = effect.statuses;
+    if (statuses instanceof Set) return statuses.has("dead");
+    if (Array.isArray(statuses)) return statuses.includes("dead");
+    return effect.flags?.core?.statusId === "dead"
+      || effect.flags?.dnd5e?.statusId === "dead";
+  }));
+}
+
+/**
+ * @param {Actor} target
+ * @returns {boolean}
+ */
+function actorHasSkullOverlayEffect(target) {
+  return Boolean(target.effects?.some((effect) => {
+    return effect.getFlag?.(MODULE_ID, "skullOverlay") === true
+      || effect.flags?.[MODULE_ID]?.skullOverlay === true;
+  }));
+}
+
+/**
+ * Apply a large skull overlay centered on the creature's token(s).
+ * Uses token.overlayEffect when available, plus an overlay ActiveEffect for v12/v13.
  * @param {Actor} target
  */
 async function markCreatureDead(target) {
   if (!target || !game.user?.isGM) return;
 
-  try {
-    const alreadyDead = target.effects?.some((effect) => {
-      const statuses = effect.statuses;
-      if (statuses instanceof Set) return statuses.has("dead");
-      if (Array.isArray(statuses)) return statuses.includes("dead");
-      return effect.flags?.core?.statusId === "dead"
-        || effect.flags?.dnd5e?.statusId === "dead";
-    });
-
-    if (!alreadyDead && typeof target.toggleStatusEffect === "function") {
-      await target.toggleStatusEffect("dead", { active: true });
-      return;
-    }
-
-    if (alreadyDead) return;
-  } catch (err) {
-    console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed, trying overlay`, err);
-  }
-
-  // Fallback: classic Foundry skull overlay on each placed token
+  // 1) Classic token overlay (large, centered in the token square).
   const tokens = target.getActiveTokens?.(true) ?? [];
   for (const token of tokens) {
     try {
-      if (token.document.overlayEffect === "icons/svg/skull.svg") continue;
-      await token.document.update({ overlayEffect: "icons/svg/skull.svg" });
+      const doc = token.document;
+      if (doc.overlayEffect !== SKULL_ICON) {
+        await doc.update({ overlayEffect: SKULL_ICON });
+      }
     } catch (err) {
-      console.warn(`${MODULE_ID} | Failed to set skull overlay on token`, err);
+      console.warn(`${MODULE_ID} | Failed to set token.overlayEffect`, err);
+    }
+  }
+
+  // 2) ActiveEffect marked as overlay (Foundry draws this large over the token).
+  if (!actorHasSkullOverlayEffect(target)) {
+    try {
+      const effectData = {
+        name: game.i18n.localize("MOMENT_OF_GLORY.Title") || "Dead",
+        img: SKULL_ICON,
+        icon: SKULL_ICON,
+        statuses: ["dead"],
+        flags: {
+          core: { overlay: true },
+          [MODULE_ID]: { skullOverlay: true }
+        }
+      };
+      // Avoid duplicating an existing dead effect — update it to overlay instead.
+      const existingDead = target.effects?.find((effect) => {
+        const statuses = effect.statuses;
+        if (statuses instanceof Set) return statuses.has("dead");
+        if (Array.isArray(statuses)) return statuses.includes("dead");
+        return false;
+      });
+      if (existingDead) {
+        await existingDead.update({
+          img: SKULL_ICON,
+          icon: SKULL_ICON,
+          "flags.core.overlay": true,
+          [`flags.${MODULE_ID}.skullOverlay`]: true
+        });
+      } else {
+        await target.createEmbeddedDocuments("ActiveEffect", [effectData]);
+      }
+    } catch (err) {
+      console.warn(`${MODULE_ID} | Failed to create overlay ActiveEffect`, err);
+      if (!actorHasDeadStatus(target) && typeof target.toggleStatusEffect === "function") {
+        try {
+          await target.toggleStatusEffect("dead", { active: true });
+        } catch (err2) {
+          console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed`, err2);
+        }
+      }
     }
   }
 }
