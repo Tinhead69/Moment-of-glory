@@ -2,11 +2,12 @@
   "id": "moment-of-glory",
   "title": "A Moment of Glory",
   "description": "When a hostile creature is reduced to 0 HP, offer the GM a chance to grant the killer a Moment of Glory - a short roleplaying beat to describe the finishing blow.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "compatibility": {
     "minimum": "13",
     "verified": "13.351"
   },
+  "socket": true,
   "authors": [
     {
       "name": "Martin Zealey"

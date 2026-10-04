@@ -7,10 +7,6 @@ const pendingByTarget = new Map();
 const hpBeforeUpdate = new Map();
 const PENDING_TTL_MS = 5000;
 
-function midiActive() {
-  return Boolean(game.modules.get("midi-qol")?.active);
-}
-
 function prunePending() {
   const now = Date.now();
   for (const [uuid, entry] of pendingByTarget) {
@@ -157,7 +153,7 @@ function resolveAttackContext(options = {}, target = null) {
  * @param {object} ctx
  */
 async function deliverKill(target, ctx = {}) {
-  if (!target || !isEnabled() || midiActive()) return;
+  if (!target || !isEnabled()) return;
 
   const oldHP = ctx.oldHP;
   const newHP = ctx.newHP ?? Number(target.system?.attributes?.hp?.value ?? 0);
@@ -191,7 +187,7 @@ async function deliverKill(target, ctx = {}) {
  * @param {object} payload
  */
 export async function considerKillPayload(payload) {
-  if (!game.user?.isGM || !isEnabled() || midiActive()) return;
+  if (!game.user?.isGM || !isEnabled()) return;
 
   const target = resolveActor(payload.targetUuid);
   if (!target) {
@@ -240,7 +236,7 @@ export async function considerKillPayload(payload) {
 export function registerFallbackDamageHooks() {
   // Capture HP before application so we know it was a fresh drop to 0.
   Hooks.on("dnd5e.preApplyDamage", (actor, amount, updates, options) => {
-    if (!isEnabled() || midiActive()) return;
+    if (!isEnabled()) return;
     if (!actor?.uuid || !updates) return;
 
     const oldHP = Number(actor.system?.attributes?.hp?.value ?? NaN);
@@ -258,7 +254,7 @@ export function registerFallbackDamageHooks() {
   });
 
   Hooks.on("dnd5e.applyDamage", (actor, amount, options) => {
-    if (!isEnabled() || midiActive()) return;
+    if (!isEnabled()) return;
     const target = actor?.documentName === "Actor" ? actor : null;
     if (!target) return;
 
@@ -287,7 +283,7 @@ export function registerFallbackDamageHooks() {
 
   // Older / alternate hook name used in some dnd5e builds.
   Hooks.on("dnd5e.damageActor", (actor, amount, options) => {
-    if (!isEnabled() || midiActive()) return;
+    if (!isEnabled()) return;
     const target = actor?.documentName === "Actor" ? actor : null;
     if (!target) return;
 
@@ -306,7 +302,7 @@ export function registerFallbackDamageHooks() {
 
   // Track HP before any actor update (covers bar edits / edge paths).
   Hooks.on("preUpdateActor", (actor, changed) => {
-    if (!isEnabled() || midiActive()) return;
+    if (!isEnabled()) return;
     const newHP = foundry.utils.getProperty(changed, "system.attributes.hp.value");
     if (newHP === undefined) return;
     hpBeforeUpdate.set(actor.uuid, Number(actor.system?.attributes?.hp?.value ?? NaN));
@@ -314,7 +310,7 @@ export function registerFallbackDamageHooks() {
 
   // Last-resort on GM: HP updates that skipped applyDamage hooks.
   Hooks.on("updateActor", (actor, changed) => {
-    if (!isEnabled() || !game.user?.isGM || midiActive()) return;
+    if (!isEnabled() || !game.user?.isGM) return;
 
     const newHP = foundry.utils.getProperty(changed, "system.attributes.hp.value");
     if (newHP === undefined) return;

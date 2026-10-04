@@ -524,8 +524,11 @@ export async function considerWorkflow(workflow, detail = {}) {
   if (!targets.length) {
     const tokenTargets = workflow?.targets || detail?.targets;
     if (tokenTargets) {
-      for (const t of tokenTargets) {
-        const actor = resolveActor(t);
+      const list = typeof tokenTargets[Symbol.iterator] === "function"
+        ? Array.from(tokenTargets)
+        : [];
+      for (const t of list) {
+        const actor = resolveActor(t?.actor || t);
         if (actor && Number(actor.system?.attributes?.hp?.value ?? 1) <= 0) {
           targets.push(actor);
         }
