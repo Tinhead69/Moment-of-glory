@@ -133,12 +133,18 @@ function wasReducedToZero(target, detail = {}) {
  * @returns {Actor|null}
  */
 function resolveAttacker(workflow, detail = {}) {
-  return resolveActor(workflow?.actor)
+  const primary = resolveActor(workflow?.actor)
     || resolveActor(detail?.actor)
     || resolveActor(detail?.attacker)
     || resolveActor(detail?.item?.actor)
-    || resolveActor(workflow?.item?.actor)
-    || resolveActor(canvas.tokens?.controlled?.[0]?.actor)
+    || resolveActor(workflow?.item?.actor);
+
+  if (primary) return primary;
+
+  const combatant = resolveActor(game.combat?.combatant?.actor);
+  if (combatant) return combatant;
+
+  return resolveActor(canvas.tokens?.controlled?.[0]?.actor)
     || resolveActor(game.user?.character)
     || null;
 }
@@ -448,6 +454,13 @@ function requestPlayerSpotlight(userId, payload) {
  */
 export async function handleSocket(data) {
   if (!data?.type) return;
+
+  if (data.type === "killDetected") {
+    if (!game.user?.isGM) return;
+    const { considerKillPayload } = await import("./fallback-damage.js");
+    await considerKillPayload(data);
+    return;
+  }
 
   if (data.type === "offerPlayer") {
     if (game.user.id !== data.userId) return;

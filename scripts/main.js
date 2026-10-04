@@ -21,6 +21,9 @@ Hooks.once("ready", () => {
   } else {
     registerFallbackDamageHooks();
     console.log(`${MODULE_ID} | Midi-QOL not active — using built-in dnd5e damage detection`);
+    if (game.user?.isGM) {
+      ui.notifications?.info("A Moment of Glory: running without Midi-QOL (built-in damage detection).");
+    }
   }
 
   console.log(`${MODULE_ID} | Ready`);
