@@ -300,64 +300,48 @@ function actorHasSkullOverlayEffect(target) {
 }
 
 /**
- * Apply a large skull overlay centered on the creature's token(s).
- * Uses token.overlayEffect when available, plus an overlay ActiveEffect for v12/v13.
+ * Apply a large skull overlay via an ActiveEffect (flags.core.overlay).
  * @param {Actor} target
  */
 async function markCreatureDead(target) {
   if (!target || !game.user?.isGM) return;
+  if (actorHasSkullOverlayEffect(target)) return;
 
-  // 1) Classic token overlay (large, centered in the token square).
-  const tokens = target.getActiveTokens?.(true) ?? [];
-  for (const token of tokens) {
-    try {
-      const doc = token.document;
-      if (doc.overlayEffect !== SKULL_ICON) {
-        await doc.update({ overlayEffect: SKULL_ICON });
+  try {
+    const effectData = {
+      name: game.i18n.localize("MOMENT_OF_GLORY.Title") || "Dead",
+      img: SKULL_ICON,
+      icon: SKULL_ICON,
+      statuses: ["dead"],
+      flags: {
+        core: { overlay: true },
+        [MODULE_ID]: { skullOverlay: true }
       }
-    } catch (err) {
-      console.warn(`${MODULE_ID} | Failed to set token.overlayEffect`, err);
-    }
-  }
-
-  // 2) ActiveEffect marked as overlay (Foundry draws this large over the token).
-  if (!actorHasSkullOverlayEffect(target)) {
-    try {
-      const effectData = {
-        name: game.i18n.localize("MOMENT_OF_GLORY.Title") || "Dead",
+    };
+    // Avoid duplicating an existing dead effect — update it to overlay instead.
+    const existingDead = target.effects?.find((effect) => {
+      const statuses = effect.statuses;
+      if (statuses instanceof Set) return statuses.has("dead");
+      if (Array.isArray(statuses)) return statuses.includes("dead");
+      return false;
+    });
+    if (existingDead) {
+      await existingDead.update({
         img: SKULL_ICON,
         icon: SKULL_ICON,
-        statuses: ["dead"],
-        flags: {
-          core: { overlay: true },
-          [MODULE_ID]: { skullOverlay: true }
-        }
-      };
-      // Avoid duplicating an existing dead effect — update it to overlay instead.
-      const existingDead = target.effects?.find((effect) => {
-        const statuses = effect.statuses;
-        if (statuses instanceof Set) return statuses.has("dead");
-        if (Array.isArray(statuses)) return statuses.includes("dead");
-        return false;
+        "flags.core.overlay": true,
+        [`flags.${MODULE_ID}.skullOverlay`]: true
       });
-      if (existingDead) {
-        await existingDead.update({
-          img: SKULL_ICON,
-          icon: SKULL_ICON,
-          "flags.core.overlay": true,
-          [`flags.${MODULE_ID}.skullOverlay`]: true
-        });
-      } else {
-        await target.createEmbeddedDocuments("ActiveEffect", [effectData]);
-      }
-    } catch (err) {
-      console.warn(`${MODULE_ID} | Failed to create overlay ActiveEffect`, err);
-      if (!actorHasDeadStatus(target) && typeof target.toggleStatusEffect === "function") {
-        try {
-          await target.toggleStatusEffect("dead", { active: true });
-        } catch (err2) {
-          console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed`, err2);
-        }
+    } else {
+      await target.createEmbeddedDocuments("ActiveEffect", [effectData]);
+    }
+  } catch (err) {
+    console.warn(`${MODULE_ID} | Failed to create overlay ActiveEffect`, err);
+    if (!actorHasDeadStatus(target) && typeof target.toggleStatusEffect === "function") {
+      try {
+        await target.toggleStatusEffect("dead", { active: true });
+      } catch (err2) {
+        console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed`, err2);
       }
     }
   }
