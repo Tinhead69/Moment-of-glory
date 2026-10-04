@@ -12,13 +12,11 @@ const DEDUPE_MS = 4000;
  */
 function isHostileTarget(actor) {
   if (!actor) return false;
-  // Token disposition: HOSTILE = -1
   const token = actor.getActiveTokens?.(true)?.[0] ?? actor.token;
   const disposition = token?.document?.disposition ?? actor.prototypeToken?.disposition;
   if (disposition !== undefined && disposition !== null) {
     return Number(disposition) <= CONST.TOKEN_DISPOSITIONS.HOSTILE;
   }
-  // Fallback: NPCs are treated as valid when disposition is missing.
   return actor.type === "npc";
 }
 
@@ -75,6 +73,33 @@ function resolveActor(ref) {
 }
 
 /**
+ * Resolve the weapon / item / spell name used for the finishing blow.
+ * @param {object} workflow
+ * @param {object} [detail]
+ * @returns {string}
+ */
+function resolveWeaponName(workflow, detail = {}) {
+  const item = workflow?.item
+    || detail?.item
+    || (detail?.itemUuid && fromUuidSync?.(detail.itemUuid))
+    || null;
+
+  const name = item?.name
+    || workflow?.itemName
+    || detail?.itemName
+    || workflow?.ammoName
+    || detail?.weaponName;
+
+  if (name) return String(name);
+
+  // Spell / feature without a classic weapon
+  if (item?.type === "spell") return item.name || "a spell";
+  if (item?.type === "feat") return item.name || "a feature";
+
+  return "your attack";
+}
+
+/**
  * Did this damage application reduce the target to 0 HP (or below)?
  * @param {Actor} target
  * @param {object} [detail]
@@ -87,21 +112,18 @@ function wasReducedToZero(target, detail = {}) {
   const value = Number(hp.value ?? 0);
   if (value > 0) return false;
 
-  // Prefer explicit before/after when Midi provides them.
   const oldHP = detail.oldHP ?? detail.hpOld ?? detail.previousHp;
   const newHP = detail.newHP ?? detail.hpNew ?? detail.hp;
   if (oldHP !== undefined && newHP !== undefined) {
     return Number(oldHP) > 0 && Number(newHP) <= 0;
   }
 
-  // Midi sometimes exposes total damage + starting HP.
   const start = detail.startingHP ?? detail.hpValue;
   const total = detail.totalDamage ?? detail.damageTotal ?? detail.appliedDamage;
   if (start !== undefined && total !== undefined) {
     return Number(start) > 0 && Number(start) - Number(total) <= 0;
   }
 
-  // Last resort: currently at 0 after a damage event (deduped per target).
   return value <= 0;
 }
 
@@ -121,13 +143,14 @@ function resolveAttacker(workflow, detail = {}) {
 
 /**
  * Ask the GM whether to offer a Moment of Glory.
- * @param {{ attacker: Actor, target: Actor }} ctx
+ * @param {{ attacker: Actor, target: Actor, weaponName: string }} ctx
  * @returns {Promise<boolean>}
  */
-async function promptGM({ attacker, target }) {
+async function promptGM({ attacker, target, weaponName }) {
   const content = game.i18n.format("MOMENT_OF_GLORY.GM.PromptContent", {
     attacker: attacker?.name ?? "Unknown",
-    target: target?.name ?? "Unknown"
+    target: target?.name ?? "Unknown",
+    weapon: weaponName || "their attack"
   });
 
   try {
@@ -163,72 +186,60 @@ async function promptGM({ attacker, target }) {
 }
 
 /**
- * Ask the player (or GM controlling them) to describe the finishing blow.
- * @param {{ attacker: Actor, target: Actor }} ctx
- * @returns {Promise<string|null>}
+ * Spotlight prompt for the player — roleplay aloud, no typing.
+ * @param {{ attacker: Actor, target: Actor, weaponName: string }} ctx
+ * @returns {Promise<boolean>} true if they seize the moment
  */
-async function promptPlayer({ attacker, target }) {
+async function promptPlayer({ attacker, target, weaponName }) {
   const content = game.i18n.format("MOMENT_OF_GLORY.Player.PromptContent", {
-    target: target?.name ?? "the foe"
+    target: target?.name ?? "the foe",
+    weapon: weaponName || "your attack"
   });
-  const placeholder = game.i18n.localize("MOMENT_OF_GLORY.Player.Placeholder");
 
-  let description = null;
   try {
-    await DialogV2.wait({
+    const result = await DialogV2.wait({
       window: {
         title: game.i18n.localize("MOMENT_OF_GLORY.Player.PromptTitle"),
         icon: "fas fa-scroll"
       },
       classes: ["moment-of-glory-dialog"],
-      position: { width: 520 },
+      position: { width: 480 },
       content: `
         <div class="mog-prompt">${content}</div>
-        <textarea class="mog-description" name="mog-description" placeholder="${placeholder}"></textarea>
-        <p class="mog-hint">Keep it short — this is a spotlight moment, not a novel.</p>
+        <p class="mog-hint">${game.i18n.localize("MOMENT_OF_GLORY.Player.Hint")}</p>
       `,
       buttons: [
         {
-          action: "submit",
+          action: "seize",
           label: game.i18n.localize("MOMENT_OF_GLORY.Player.Submit"),
           icon: "fas fa-check",
           default: true,
-          callback: (_event, button) => {
-            const root = button.form
-              || button.closest?.(".window-content, .application, form")
-              || document;
-            const area = root.querySelector?.('textarea[name="mog-description"]');
-            description = String(area?.value || "").trim();
-            return description;
-          }
+          callback: () => true
         },
         {
           action: "skip",
           label: game.i18n.localize("MOMENT_OF_GLORY.Player.Skip"),
           icon: "fas fa-forward",
-          callback: () => {
-            description = null;
-            return null;
-          }
+          callback: () => false
         }
       ],
       rejectClose: false
     });
+    return result === true;
   } catch (_) {
-    return null;
+    return false;
   }
-  return description;
 }
 
 /**
- * Post the Moment of Glory to chat.
- * @param {{ attacker: Actor, target: Actor, description: string }} ctx
+ * Post that a Moment of Glory was taken (table RP; no typed text).
+ * @param {{ attacker: Actor, target: Actor, weaponName: string }} ctx
  */
-async function announceMoment({ attacker, target, description }) {
+async function announceMoment({ attacker, target, weaponName }) {
   const content = game.i18n.format("MOMENT_OF_GLORY.Chat.Announcement", {
     attacker: attacker?.name ?? "Unknown",
     target: target?.name ?? "Unknown",
-    description: foundry.utils.escapeHTML?.(description) || description
+    weapon: weaponName || "their attack"
   });
 
   await ChatMessage.create({
@@ -255,40 +266,38 @@ function findPlayerUser(attacker) {
 
 /**
  * Run the full GM → player Moment of Glory flow (GM client orchestrates).
- * @param {{ attacker: Actor, target: Actor }} ctx
+ * @param {{ attacker: Actor, target: Actor, weaponName?: string }} ctx
  */
-export async function runMomentOfGloryFlow({ attacker, target }) {
+export async function runMomentOfGloryFlow({ attacker, target, weaponName = "your attack" }) {
   if (!game.user?.isGM) return;
   if (!isEnabled()) return;
   if (!attacker || !target) return;
   if (!shouldConsiderTarget(target)) return;
   if (isDuplicate(target.uuid || target.id)) return;
 
-  const offered = await promptGM({ attacker, target });
+  const offered = await promptGM({ attacker, target, weaponName });
   if (!offered) {
     ui.notifications?.info(game.i18n.localize("MOMENT_OF_GLORY.Notify.Declined"));
     return;
   }
 
-  // Ask the owning player if present; otherwise the GM fills in / skip.
   const playerUser = findPlayerUser(attacker);
-  let description = null;
+  let seized = false;
 
   if (playerUser && playerUser.active) {
-    // Request the player client to show the dialog via socket.
-    description = await requestPlayerDescription(playerUser.id, {
+    seized = await requestPlayerSpotlight(playerUser.id, {
       attackerUuid: attacker.uuid,
       targetUuid: target.uuid,
       attackerName: attacker.name,
-      targetName: target.name
+      targetName: target.name,
+      weaponName
     });
   } else {
-    // GM-controlled attacker (or offline player): prompt on GM client.
-    description = await promptPlayer({ attacker, target });
+    seized = await promptPlayer({ attacker, target, weaponName });
   }
 
-  if (description) {
-    await announceMoment({ attacker, target, description });
+  if (seized) {
+    await announceMoment({ attacker, target, weaponName });
   } else {
     await ChatMessage.create({
       speaker: ChatMessage.getSpeaker({ actor: attacker }),
@@ -301,24 +310,24 @@ export async function runMomentOfGloryFlow({ attacker, target }) {
 }
 
 /**
- * Socket: GM asks a player to describe their Moment of Glory.
+ * Socket: GM asks a player to take their Moment of Glory (spoken RP).
  * @param {string} userId
  * @param {object} payload
- * @returns {Promise<string|null>}
+ * @returns {Promise<boolean>}
  */
-function requestPlayerDescription(userId, payload) {
+function requestPlayerSpotlight(userId, payload) {
   return new Promise((resolve) => {
     const requestId = foundry.utils.randomID();
     const timeout = setTimeout(() => {
       Hooks.off("moment-of-glory.playerResponse", handler);
-      resolve(null);
+      resolve(false);
     }, 120000);
 
     function handler(response) {
       if (response?.requestId !== requestId) return;
       clearTimeout(timeout);
       Hooks.off("moment-of-glory.playerResponse", handler);
-      resolve(response.description ?? null);
+      resolve(Boolean(response.seized));
     }
 
     Hooks.on("moment-of-glory.playerResponse", handler);
@@ -350,21 +359,21 @@ export async function handleSocket(data) {
 
     const attacker = resolveActor(data.attackerUuid);
     const target = resolveActor(data.targetUuid);
-    const description = await promptPlayer({
+    const seized = await promptPlayer({
       attacker: attacker || { name: data.attackerName },
-      target: target || { name: data.targetName }
+      target: target || { name: data.targetName },
+      weaponName: data.weaponName || "your attack"
     });
 
     game.socket.emit(`module.${MODULE_ID}`, {
       type: "playerResponse",
       requestId: data.requestId,
-      description
+      seized
     });
     return;
   }
 
   if (data.type === "playerResponse") {
-    // Only the GM who issued the request needs this.
     if (!game.user?.isGM) return;
     Hooks.callAll("moment-of-glory.playerResponse", data);
   }
@@ -380,9 +389,9 @@ export async function considerWorkflow(workflow, detail = {}) {
   if (!game.user?.isGM) return;
 
   const attacker = resolveAttacker(workflow, detail);
+  const weaponName = resolveWeaponName(workflow, detail);
   const targets = [];
 
-  // Midi workflow damageList is the richest source.
   const damageList = workflow?.damageList || detail?.damageList || [];
   if (Array.isArray(damageList) && damageList.length) {
     for (const entry of damageList) {
@@ -398,13 +407,11 @@ export async function considerWorkflow(workflow, detail = {}) {
         startingHP: oldHP,
         totalDamage: entry.hpDamage ?? entry.appliedDamage
       });
-      // Also accept "currently at 0 after this workflow hit them".
       const atZero = Number(target.system?.attributes?.hp?.value ?? 1) <= 0;
       if (zero || atZero) targets.push(target);
     }
   }
 
-  // Fallback: workflow.targets / failed targets tokens
   if (!targets.length) {
     const tokenTargets = workflow?.targets || detail?.targets;
     if (tokenTargets) {
@@ -417,7 +424,6 @@ export async function considerWorkflow(workflow, detail = {}) {
     }
   }
 
-  // Single-target detail fallback
   if (!targets.length && detail?.target) {
     const actor = resolveActor(detail.target);
     if (actor && wasReducedToZero(actor, detail)) targets.push(actor);
@@ -430,7 +436,6 @@ export async function considerWorkflow(workflow, detail = {}) {
 
   for (const target of unique.values()) {
     if (!shouldConsiderTarget(target)) continue;
-    // Fire sequentially so the GM isn't buried in dialogs.
-    await runMomentOfGloryFlow({ attacker, target });
+    await runMomentOfGloryFlow({ attacker, target, weaponName });
   }
 }

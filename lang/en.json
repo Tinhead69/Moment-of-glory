@@ -17,24 +17,24 @@
     },
     "GM": {
       "PromptTitle": "Moment of Glory?",
-      "PromptContent": "<p><strong>{attacker}</strong> has reduced <strong>{target}</strong> to 0 HP.</p><p>Offer them a <em>Moment of Glory</em> to describe the finishing blow?</p>",
+      "PromptContent": "<p><strong>{attacker}</strong> has reduced <strong>{target}</strong> to 0 HP with <strong>{weapon}</strong>.</p><p>Offer them a <em>Moment of Glory</em> to describe the finishing blow?</p>",
       "Offer": "Offer Moment of Glory",
       "Decline": "Decline — kill as normal"
     },
     "Player": {
       "PromptTitle": "A Moment of Glory",
-      "PromptContent": "<p>The GM offers you a <strong>Moment of Glory</strong>.</p><p>Describe how you finish <strong>{target}</strong>:</p>",
-      "Placeholder": "Describe your finishing blow…",
+      "PromptContent": "<p>The GM offers you a <strong>Moment of Glory</strong>.</p><p>Describe how you finish <strong>{target}</strong> with your <strong>{weapon}</strong>.</p>",
+      "Hint": "Say it at the table — this is your spotlight moment.",
       "Submit": "Seize the Moment",
       "Skip": "Skip"
     },
     "Chat": {
-      "Announcement": "<p><em>A Moment of Glory</em> — <strong>{attacker}</strong> vs <strong>{target}</strong></p><blockquote>{description}</blockquote>",
+      "Announcement": "<p><em>A Moment of Glory!</em></p><p><strong>{attacker}</strong> finishes <strong>{target}</strong> with <strong>{weapon}</strong>.</p>",
       "Skipped": "{attacker} declines the Moment of Glory against {target}."
     },
     "Notify": {
       "WaitingOnGM": "Waiting for the GM to decide on a Moment of Glory…",
-      "WaitingOnPlayer": "Waiting for {player} to describe their Moment of Glory…",
+      "WaitingOnPlayer": "Waiting for {player} to take their Moment of Glory…",
       "Offered": "You have been offered a Moment of Glory!",
       "Declined": "Moment of Glory declined — death proceeds normally.",
       "NoMidi": "Moment of Glory: midi-qol not active; falling back to dnd5e damage hooks where possible."

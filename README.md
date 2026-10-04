@@ -19,8 +19,8 @@ When a character reduces a hostile creature to **0 HP**, the GM is asked whether
 1. Hostile creature is reduced to 0 HP (Midi-QOL damage workflow)
 2. **GM** sees: Offer Moment of Glory / Decline
 3. **Decline** → nothing extra; death proceeds as normal
-4. **Offer** → the killing player gets a prompt to describe the finish
-5. Description (if any) is posted to chat
+4. **Offer** → the killing player gets a spotlight prompt naming the **weapon/item** used
+5. They describe the kill **at the table** (no typing); chat notes that they seized the moment
 
 ## Settings
 
