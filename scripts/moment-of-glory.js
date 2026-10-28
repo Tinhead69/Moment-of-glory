@@ -1,9 +1,11 @@
 import { MODULE_ID, hostilesOnly, ignorePCs, isEnabled } from "./settings.js";
+import { fromUuidSafe, resolveActor, isCoordinator, isFreshKill } from "./compatibility.js";
 
 const { DialogV2 } = foundry.applications.api;
 
 /** Prevent double prompts for the same target in a short window. */
 const recentTargets = new Map();
+const inFlightTargets = new Set();
 const DEDUPE_MS = 4000;
 
 /**
@@ -13,7 +15,7 @@ const DEDUPE_MS = 4000;
 function isHostileTarget(actor) {
   if (!actor) return false;
   const token = actor.getActiveTokens?.(true)?.[0] ?? actor.token;
-  const disposition = token?.document?.disposition ?? actor.prototypeToken?.disposition;
+  const disposition = token?.document?.disposition ?? token?.disposition ?? actor.prototypeToken?.disposition;
   if (disposition !== undefined && disposition !== null) {
     return Number(disposition) <= CONST.TOKEN_DISPOSITIONS.HOSTILE;
   }
@@ -48,28 +50,9 @@ function isDuplicate(targetUuid) {
   for (const [uuid, ts] of recentTargets) {
     if (now - ts > DEDUPE_MS) recentTargets.delete(uuid);
   }
-  if (recentTargets.has(targetUuid)) return true;
+  if (inFlightTargets.has(targetUuid) || recentTargets.has(targetUuid)) return true;
   recentTargets.set(targetUuid, now);
   return false;
-}
-
-/**
- * Resolve an Actor from assorted Midi / damage payload shapes.
- * @param {unknown} ref
- * @returns {Actor|null}
- */
-function resolveActor(ref) {
-  if (!ref) return null;
-  if (ref.documentName === "Actor") return ref;
-  if (ref.actor) return ref.actor;
-  if (typeof ref === "string") {
-    try {
-      const doc = fromUuidSync?.(ref);
-      if (doc?.documentName === "Actor") return doc;
-      if (doc?.actor) return doc.actor;
-    } catch (_) { /* ignore */ }
-  }
-  return null;
 }
 
 /**
@@ -81,7 +64,7 @@ function resolveActor(ref) {
 function resolveWeaponName(workflow, detail = {}) {
   const item = workflow?.item
     || detail?.item
-    || (detail?.itemUuid && fromUuidSync?.(detail.itemUuid))
+    || (detail?.itemUuid && fromUuidSafe(detail.itemUuid))
     || null;
 
   const name = detail?.weaponName
@@ -113,8 +96,8 @@ function wasReducedToZero(target, detail = {}) {
 
   const oldHP = detail.oldHP ?? detail.hpOld ?? detail.previousHp;
   const newHP = detail.newHP ?? detail.hpNew ?? detail.hp;
-  if (oldHP !== undefined && newHP !== undefined) {
-    return Number(oldHP) > 0 && Number(newHP) <= 0;
+  if (oldHP !== undefined) {
+    return isFreshKill(oldHP, newHP ?? value);
   }
 
   const start = detail.startingHP ?? detail.hpValue;
@@ -123,7 +106,9 @@ function wasReducedToZero(target, detail = {}) {
     return Number(start) > 0 && Number(start) - Number(total) <= 0;
   }
 
-  return value <= 0;
+  // Being at zero is insufficient: the target may have died on an earlier turn.
+  // Core HP tracking covers workflows which do not provide a before/after pair.
+  return false;
 }
 
 /**
@@ -264,7 +249,7 @@ async function announceMoment({ attacker, target, weaponName }) {
  */
 function findPlayerUser(attacker) {
   if (!attacker) return null;
-  const owners = game.users.filter((u) => !u.isGM && attacker.testUserPermission?.(u, "OWNER"));
+  const owners = game.users.filter((u) => u.active && !u.isGM && attacker.testUserPermission?.(u, "OWNER"));
   if (owners.length) return owners[0];
   if (attacker.hasPlayerOwner) {
     return game.users.find((u) => u.character?.id === attacker.id) || null;
@@ -274,76 +259,16 @@ function findPlayerUser(attacker) {
 
 const SKULL_ICON = "icons/svg/skull.svg";
 
-/**
- * @param {Actor} target
- * @returns {boolean}
- */
-function actorHasDeadStatus(target) {
-  return Boolean(target.effects?.some((effect) => {
-    const statuses = effect.statuses;
-    if (statuses instanceof Set) return statuses.has("dead");
-    if (Array.isArray(statuses)) return statuses.includes("dead");
-    return effect.flags?.core?.statusId === "dead"
-      || effect.flags?.dnd5e?.statusId === "dead";
-  }));
-}
-
-/**
- * @param {Actor} target
- * @returns {boolean}
- */
-function actorHasSkullOverlayEffect(target) {
-  return Boolean(target.effects?.some((effect) => {
-    return effect.getFlag?.(MODULE_ID, "skullOverlay") === true
-      || effect.flags?.[MODULE_ID]?.skullOverlay === true;
-  }));
-}
-
-/**
- * Apply a large skull overlay via an ActiveEffect (flags.core.overlay).
- * @param {Actor} target
- */
+/** Let each Foundry/system version create its own valid condition data. */
 async function markCreatureDead(target) {
-  if (!target || !game.user?.isGM) return;
-  if (actorHasSkullOverlayEffect(target)) return;
-
+  if (!target || !isCoordinator()) return;
   try {
-    const effectData = {
-      name: game.i18n.localize("MOMENT_OF_GLORY.Title") || "Dead",
-      img: SKULL_ICON,
-      icon: SKULL_ICON,
-      statuses: ["dead"],
-      flags: {
-        core: { overlay: true },
-        [MODULE_ID]: { skullOverlay: true }
-      }
-    };
-    // Avoid duplicating an existing dead effect — update it to overlay instead.
-    const existingDead = target.effects?.find((effect) => {
-      const statuses = effect.statuses;
-      if (statuses instanceof Set) return statuses.has("dead");
-      if (Array.isArray(statuses)) return statuses.includes("dead");
-      return false;
-    });
-    if (existingDead) {
-      await existingDead.update({
-        img: SKULL_ICON,
-        icon: SKULL_ICON,
-        "flags.core.overlay": true,
-        [`flags.${MODULE_ID}.skullOverlay`]: true
-      });
-    } else {
-      await target.createEmbeddedDocuments("ActiveEffect", [effectData]);
-    }
+    await target.toggleStatusEffect("dead", { active: true, overlay: true });
+    // Also promote an existing dead condition to an overlay, without creating duplicates.
+    const effect = target.effects?.find(e => e.statuses?.has?.("dead") || e.statuses?.includes?.("dead"));
+    if (effect) await effect.update({ img: SKULL_ICON, "flags.core.overlay": true });
   } catch (err) {
-    console.warn(`${MODULE_ID} | Failed to create overlay ActiveEffect`, err);
-    if (!actorHasDeadStatus(target) && typeof target.toggleStatusEffect === "function") {
-      try {
-        await target.toggleStatusEffect("dead", { active: true });
-      } catch (err2) {
-        console.warn(`${MODULE_ID} | toggleStatusEffect(dead) failed`, err2);
-      }
-    }
+    console.warn(MODULE_ID + " | Failed to mark defeated creature", err);
   }
 }
 
@@ -352,46 +277,53 @@ async function markCreatureDead(target) {
  * @param {{ attacker: Actor, target: Actor, weaponName?: string }} ctx
  */
 export async function runMomentOfGloryFlow({ attacker, target, weaponName = "your attack" }) {
-  if (!game.user?.isGM) return;
+  if (!isCoordinator()) return;
   if (!isEnabled()) return;
   if (!attacker || !target) return;
   if (!shouldConsiderTarget(target)) return;
-  if (isDuplicate(target.uuid || target.id)) return;
+  const targetKey = target.uuid || target.id;
+  if (isDuplicate(targetKey)) return;
+  inFlightTargets.add(targetKey);
+  try {
 
-  // Creature is at 0 HP — show skull & crossbones on the token.
-  await markCreatureDead(target);
+    // Creature is at 0 HP — show skull & crossbones on the token.
+    await markCreatureDead(target);
 
-  const offered = await promptGM({ attacker, target, weaponName });
-  if (!offered) {
-    ui.notifications?.info(game.i18n.localize("MOMENT_OF_GLORY.Notify.Declined"));
-    return;
-  }
+    const offered = await promptGM({ attacker, target, weaponName });
+    if (!offered) {
+      ui.notifications?.info(game.i18n.localize("MOMENT_OF_GLORY.Notify.Declined"));
+      return;
+    }
 
-  const playerUser = findPlayerUser(attacker);
-  let seized = false;
+    const playerUser = findPlayerUser(attacker);
+    let seized = false;
 
-  if (playerUser && playerUser.active) {
-    seized = await requestPlayerSpotlight(playerUser.id, {
-      attackerUuid: attacker.uuid,
-      targetUuid: target.uuid,
-      attackerName: attacker.name,
-      targetName: target.name,
-      weaponName
-    });
-  } else {
-    seized = await promptPlayer({ attacker, target, weaponName });
-  }
+    if (playerUser && playerUser.active) {
+      seized = await requestPlayerSpotlight(playerUser.id, {
+        attackerUuid: attacker.uuid,
+        targetUuid: target.uuid,
+        attackerName: attacker.name,
+        targetName: target.name,
+        weaponName
+      });
+    } else {
+      seized = await promptPlayer({ attacker, target, weaponName });
+    }
 
-  if (seized) {
-    await announceMoment({ attacker, target, weaponName });
-  } else {
-    await ChatMessage.create({
-      speaker: ChatMessage.getSpeaker({ actor: attacker }),
-      content: game.i18n.format("MOMENT_OF_GLORY.Chat.Skipped", {
-        attacker: attacker.name,
-        target: target.name
-      })
-    });
+    if (seized) {
+      await announceMoment({ attacker, target, weaponName });
+    } else {
+      await ChatMessage.create({
+        speaker: ChatMessage.getSpeaker({ actor: attacker }),
+        content: game.i18n.format("MOMENT_OF_GLORY.Chat.Skipped", {
+          attacker: attacker.name,
+          target: target.name
+        })
+      });
+    }
+  } finally {
+    inFlightTargets.delete(targetKey);
+    recentTargets.set(targetKey, Date.now());
   }
 }
 
@@ -440,7 +372,7 @@ export async function handleSocket(data) {
   if (!data?.type) return;
 
   if (data.type === "killDetected") {
-    if (!game.user?.isGM) return;
+    if (!isCoordinator()) return;
     const { considerKillPayload } = await import("./fallback-damage.js");
     await considerKillPayload(data);
     return;
@@ -467,7 +399,7 @@ export async function handleSocket(data) {
   }
 
   if (data.type === "playerResponse") {
-    if (!game.user?.isGM) return;
+    if (!isCoordinator()) return;
     Hooks.callAll("moment-of-glory.playerResponse", data);
   }
 }
@@ -479,7 +411,7 @@ export async function handleSocket(data) {
  */
 export async function considerWorkflow(workflow, detail = {}) {
   if (!isEnabled()) return;
-  if (!game.user?.isGM) return;
+  if (!isCoordinator()) return;
 
   const attacker = resolveAttacker(workflow, detail);
   const weaponName = resolveWeaponName(workflow, detail);
@@ -500,12 +432,11 @@ export async function considerWorkflow(workflow, detail = {}) {
         startingHP: oldHP,
         totalDamage: entry.hpDamage ?? entry.appliedDamage
       });
-      const atZero = Number(target.system?.attributes?.hp?.value ?? 1) <= 0;
-      if (zero || atZero) targets.push(target);
+      if (zero) targets.push(target);
     }
   }
 
-  if (!targets.length) {
+  if (!targets.length && !damageList.length && !detail?.target) {
     const tokenTargets = workflow?.targets || detail?.targets;
     if (tokenTargets) {
       const list = typeof tokenTargets[Symbol.iterator] === "function"
@@ -513,7 +444,7 @@ export async function considerWorkflow(workflow, detail = {}) {
         : [];
       for (const t of list) {
         const actor = resolveActor(t?.actor || t);
-        if (actor && Number(actor.system?.attributes?.hp?.value ?? 1) <= 0) {
+        if (actor && wasReducedToZero(actor, detail)) {
           targets.push(actor);
         }
       }

@@ -1,5 +1,6 @@
 import { MODULE_ID, registerSettings, isEnabled } from "./settings.js";
 import { considerWorkflow, handleSocket } from "./moment-of-glory.js";
+import { isCoordinator } from "./compatibility.js";
 import { registerFallbackDamageHooks } from "./fallback-damage.js";
 
 Hooks.once("init", () => {
@@ -42,7 +43,7 @@ function registerMidiHooks() {
 
   for (const hookName of workflowHooks) {
     Hooks.on(hookName, (workflow) => {
-      if (!isEnabled() || !game.user?.isGM) return;
+      if (!isEnabled() || !isCoordinator()) return;
       considerWorkflow(workflow).catch((err) => {
         console.error(`${MODULE_ID} | considerWorkflow failed (${hookName})`, err);
       });
@@ -51,7 +52,7 @@ function registerMidiHooks() {
 
   // Most reliable: fires once per target after HP damage is applied.
   Hooks.on("midi-qol.damaged", (tokenOrActor, options = {}) => {
-    if (!isEnabled() || !game.user?.isGM) return;
+    if (!isEnabled() || !isCoordinator()) return;
 
     const damageItem = options.damageItem || options;
     const workflow = options.workflow;
